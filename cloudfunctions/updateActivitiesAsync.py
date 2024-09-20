@@ -1,0 +1,61 @@
+import pandas as pd
+import logging
+import asyncio
+from io import StringIO
+from .marketo.Request import Request
+from .snowflake.Connector import Connector as SnowflakeConnector
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def getActivitiesDataAsync(next_page_token):
+    request = Request()
+    snowflake = SnowflakeConnector()
+    # logger.info(f"Getting Activities since {since_datetime}")
+    # activities_paging_token_url = "/rest/v1/activities/pagingtoken.json"
+    # params = {"sinceDatetime": since_datetime}
+    # paging_token_data = request.get(activities_paging_token_url, params=params).json()
+    # next_page_token = paging_token_data.get("nextPageToken")
+    # logger.info(f"Paging Token for activities since {since_datetime}: {next_page_token}")
+    # print(next_page_token)
+    # asyncio.run(snowflake.writeLog(next_page_token, 'MARKETO_ACTIVITIES', 'nextPageToken', success=True))
+    # return
+    print(next_page_token)
+    if next_page_token is None:
+        raise Exception("next_page_token is Null.")
+
+
+    table_name = "MARKETO_ACTIVITIES"
+    params = {
+        "nextPageToken": next_page_token,
+        "batchSize": 300,
+        "activityTypeIds": [1, 2, 3, 6, 7, 8, 9, 10, 11, 27]
+    }
+    while True:
+        try:
+            activities_url = "/rest/v1/activities.json"
+            data = request.get(activities_url, params=params).json()
+            if data['result'] is None:
+                raise Exception("No activities found.")
+            
+            df = pd.DataFrame(data['result'], dtype=str)
+            # df.to_csv(f"data_{data['nextPageToken']}.csv",index=False)
+            result = snowflake.writeDataframe(df, table_name)
+            logger.info(f"Uploaded {len(df)} activities to Snowflake")
+            # print(result)
+            if data['moreResult']:
+                params['nextPageToken'] = data['nextPageToken']
+                asyncio.run(snowflake.writeLog(str(data['nextPageToken']), table_name, 'nextPageToken', success=True))
+            else:
+                break
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            asyncio.run(snowflake.writeLog(str(e), table_name, 'getActivitiesDataAsync'))
+            # traceback.print_exc()  # This will print the traceback to the console, you can replace it with logger.error
+            break
+
+    return True
+
+# Example function call
+# getActivitiesDataAsync("2023-11-28T16:00:24Z")
